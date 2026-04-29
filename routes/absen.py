@@ -1,11 +1,13 @@
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import verify_jwt_in_request
+from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
 
-from database import koneksi, simpan_absen
+from database import koneksi, simpan_absen, ambil_riwayat
 from face_recognizer import recog
 
 absen_bp = Blueprint("absen", __name__)
 
+
+# ===================== ABSEN =====================
 @absen_bp.route("/absen", methods=["POST"])
 def absen():
     try:
@@ -45,21 +47,55 @@ def absen():
         return jsonify({"sukses": False, "pesan": "Gagal menyimpan absen"}), 500
 
     return jsonify({
-        "sukses": True,
-        "nama": hasil["nama"],
-        "jabatan": k["jabatan"],
+        "sukses"    : True,
+        "nama"      : hasil["nama"],
+        "jabatan"   : k["jabatan"],
         "departemen": k["departemen"],
-        "tipe": tipe,
-        "status": status,
-        "keyakinan": hasil["keyakinan"],
-        "alamat": alamat or "",
-        "pesan": "Absen berhasil"
+        "tipe"      : tipe,
+        "status"    : status,
+        "keyakinan" : hasil["keyakinan"],
+        "alamat"    : alamat or "",
+        "pesan"     : "Absen berhasil"
     })
 
 
+# ===================== KENALI =====================
 @absen_bp.route("/kenali", methods=["POST"])
 def kenali():
-    data = request.json
+    data   = request.json
     gambar = data.get("gambar")
-    hasil = recog.kenali_wajah(gambar)
+    hasil  = recog.kenali_wajah(gambar)
     return jsonify(hasil)
+
+
+# ===================== RIWAYAT =====================
+@absen_bp.route("/riwayat", methods=["GET"])
+def riwayat():
+    try:
+        verify_jwt_in_request()
+        user_id = get_jwt_identity()
+    except Exception:
+        return jsonify({"sukses": False, "pesan": "Sesi tidak valid, silakan login ulang"}), 401
+
+    db  = koneksi()
+    cur = db.cursor(dictionary=True)
+    try:
+        cur.execute("""
+            SELECT k.id FROM karyawan k
+            JOIN user u ON u.username = k.nama
+            WHERE u.id = %s
+        """, (user_id,))
+        karyawan = cur.fetchone()
+    finally:
+        cur.close()
+        db.close()
+
+    if not karyawan:
+        return jsonify({"sukses": False, "pesan": "Karyawan tidak ditemukan"}), 404
+
+    data = ambil_riwayat(karyawan["id"])
+
+    return jsonify({
+        "sukses": True,
+        "data"  : data
+    })

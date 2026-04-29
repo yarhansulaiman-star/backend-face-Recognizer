@@ -12,6 +12,7 @@ from routes.absen import absen_bp
 from routes.gaji import gaji_bp
 from routes.izin import izin_bp
 from routes.notifikasi import notif_bp, start_scheduler
+from routes.laporan import laporan_bp
 
 # ===================== INIT APP =====================
 app = Flask(__name__)
@@ -50,8 +51,8 @@ def handle_422(e):
 def health():
     from recognizer import recog
     return jsonify({
-        "status": "ok",
-        "total_user": len(recog.encodings)
+        "status"     : "ok",
+        "total_user" : len(recog.encodings)
     })
 
 
@@ -68,16 +69,17 @@ def hapus_encoding(username):
 
     return jsonify({
         "sukses": True,
-        "pesan": f"{username} berhasil dihapus"
+        "pesan" : f"{username} berhasil dihapus"
     })
 
 
-# ===================== REGISTER ROUTES (tanpa prefix /api) =====================
+# ===================== REGISTER ROUTES =====================
 app.register_blueprint(auth_bp)
 app.register_blueprint(absen_bp)
 app.register_blueprint(gaji_bp)
 app.register_blueprint(izin_bp)
 app.register_blueprint(notif_bp)
+app.register_blueprint(laporan_bp)
 
 
 # ===================== START SCHEDULER =====================
@@ -86,4 +88,6 @@ start_scheduler()
 
 # ===================== RUN =====================
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    # ✅ debug=False — mencegah Flask restart 2x yang membuang ~15 detik
+    # saat debug=True Flask spawn 2 proses, ngrok sudah timeout sebelum encoding selesai
+    app.run(debug=False, host="0.0.0.0", port=5000)

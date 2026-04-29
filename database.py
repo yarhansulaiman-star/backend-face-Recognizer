@@ -108,7 +108,7 @@ def hapus_karyawan(nama):
 def simpan_absen(karyawan_id, lat=None, lon=None):
     db = koneksi()
     cur = db.cursor()
-    now = now_wib()  # Gunakan WIB
+    now = now_wib()
 
     alamat = None
     if lat is not None and lon is not None:
@@ -130,7 +130,6 @@ def simpan_absen(karyawan_id, lat=None, lon=None):
         tipe   = "keluar"
         status = "selesai"
     else:
-        # Batas tepat waktu jam 08:00 WIB
         batas = now.replace(hour=8, minute=0, second=0, microsecond=0)
         status = "tepat_waktu" if now <= batas else "terlambat"
         cur.execute("""
@@ -172,15 +171,10 @@ def ambil_laporan(tanggal):
         cur.close()
         db.close()
 
-        
- 
+
 # ================= GAJI =================
- 
+
 def ambil_gaji(karyawan_id, bulan=None, tahun=None):
-    """
-    Ambil data gaji karyawan untuk bulan & tahun tertentu.
-    Jika bulan/tahun tidak diisi, ambil yang terbaru.
-    """
     db = koneksi()
     cur = db.cursor(dictionary=True)
     try:
@@ -205,10 +199,14 @@ def ambil_gaji(karyawan_id, bulan=None, tahun=None):
         print(f"ambil_gaji error: {e}")
         return None
     finally:
+        try:
+            cur.fetchall()   # kosongkan sisa result
+        except Exception:
+            pass
         cur.close()
         db.close()
- 
- 
+
+
 def simpan_gaji(karyawan_id, gaji_pokok, tunjangan_transport,
                 tunjangan_makan, tunjangan_jabatan, bulan, tahun):
     """
@@ -239,37 +237,73 @@ def simpan_gaji(karyawan_id, gaji_pokok, tunjangan_transport,
     finally:
         cur.close()
         db.close()
- 
- 
+
+
 def hitung_potongan_terlambat(karyawan_id, bulan, tahun):
     """
-    Hitung jumlah hari terlambat dan total potongan bulan tertentu.
-    Tarif potongan: Rp 50.000 per hari terlambat (sesuaikan).
+    Hitung potongan keterlambatan dengan detail per hari.
+    Tarif: Rp 1.000 per menit terlambat dari jam 08:00.
+    Return: (list_detail, total_potongan)
     """
-    POTONGAN_PER_TERLAMBAT = 50000
- 
+    POTONGAN_PER_MENIT = 1000
+
     db = koneksi()
     cur = db.cursor(dictionary=True)
     try:
         cur.execute("""
-            SELECT COUNT(*) AS jml_terlambat
+            SELECT
+                DATE_FORMAT(tanggal, '%d %b %Y') AS tanggal,
+                TIME_FORMAT(jam_masuk, '%H:%i')  AS jam_masuk,
+                GREATEST(0, TIMESTAMPDIFF(MINUTE, '08:00:00', jam_masuk)) AS menit_terlambat
             FROM absensi
             WHERE karyawan_id = %s
               AND status = 'terlambat'
               AND MONTH(tanggal) = %s
               AND YEAR(tanggal)  = %s
+            ORDER BY tanggal ASC
         """, (karyawan_id, bulan, tahun))
-        row = cur.fetchone()
-        jml = row["jml_terlambat"] if row else 0
-        return jml, jml * POTONGAN_PER_TERLAMBAT
+        rows = cur.fetchall()
+        total_potongan = 0
+        for row in rows:
+            menit = int(row["menit_terlambat"] or 0)
+            row["menit_terlambat"] = menit
+            row["potongan"] = menit * POTONGAN_PER_MENIT
+            total_potongan += row["potongan"]
+        return rows, total_potongan   # (list detail, total rupiah)
     except Exception as e:
         print(f"hitung_potongan_terlambat error: {e}")
-        return 0, 0
+        return [], 0
     finally:
         cur.close()
         db.close()
- 
- 
+
+
+def hitung_alpha(karyawan_id, bulan, tahun):
+    """
+    Hitung jumlah hari tidak hadir tanpa keterangan (alpha).
+    Return: int jumlah hari alpha
+    """
+    db = koneksi()
+    cur = db.cursor(dictionary=True)
+    try:
+        cur.execute("""
+            SELECT COUNT(*) AS jumlah
+            FROM absensi
+            WHERE karyawan_id = %s
+              AND status = 'alpha'
+              AND MONTH(tanggal) = %s
+              AND YEAR(tanggal)  = %s
+        """, (karyawan_id, bulan, tahun))
+        row = cur.fetchone()
+        return int(row["jumlah"]) if row else 0
+    except Exception as e:
+        print(f"hitung_alpha error: {e}")
+        return 0
+    finally:
+        cur.close()
+        db.close()
+
+
 def ambil_riwayat_gaji(karyawan_id, limit=6):
     """
     Ambil ringkasan gaji beberapa bulan terakhir untuk riwayat.
@@ -292,6 +326,7 @@ def ambil_riwayat_gaji(karyawan_id, limit=6):
     finally:
         cur.close()
         db.close()
+
 
 # ================= RIWAYAT =================
 def ambil_riwayat(karyawan_id):
@@ -317,9 +352,9 @@ def ambil_riwayat(karyawan_id):
     finally:
         cur.close()
         db.close()
-        
-        # ================= SURAT IZIN =================
 
+
+# ================= SURAT IZIN =================
 def ajukan_izin(user_id, jenis_izin, tanggal_mulai, tanggal_selesai, keterangan, foto_bukti=None):
     db = koneksi()
     cur = db.cursor()

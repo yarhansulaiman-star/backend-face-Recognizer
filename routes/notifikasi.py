@@ -3,7 +3,6 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from firebase_admin import messaging
 from apscheduler.schedulers.background import BackgroundScheduler
 
-#  FIX IMPORT
 from database import koneksi
 
 notif_bp = Blueprint("notifikasi", __name__)
@@ -42,7 +41,7 @@ def simpan_fcm_token():
 
 # ===================== SCHEDULER =====================
 def pengingat_absen_masuk():
-    print(" Cek pengingat absen masuk...")
+    print("🔔 Cek pengingat absen masuk...")
 
     db_conn = koneksi()
     cur     = db_conn.cursor(dictionary=True)
@@ -51,8 +50,10 @@ def pengingat_absen_masuk():
             SELECT u.fcm_token FROM user u
             WHERE u.fcm_token IS NOT NULL
             AND u.id NOT IN (
-                SELECT a.user_id FROM absensi a
-                WHERE DATE(a.waktu_masuk) = CURDATE()
+                SELECT u2.id FROM absensi a
+                JOIN karyawan k ON k.id = a.karyawan_id
+                JOIN user u2 ON u2.username = k.nama
+                WHERE a.tanggal = CURDATE()
             )
         """)
         users = cur.fetchall()
@@ -71,7 +72,7 @@ def pengingat_absen_masuk():
 
 
 def pengingat_absen_pulang():
-    print("Cek pengingat absen pulang...")
+    print("🔔 Cek pengingat absen pulang...")
 
     db_conn = koneksi()
     cur     = db_conn.cursor(dictionary=True)
@@ -79,14 +80,12 @@ def pengingat_absen_pulang():
         cur.execute("""
             SELECT u.fcm_token FROM user u
             WHERE u.fcm_token IS NOT NULL
-            AND u.id NOT IN (
-                SELECT a.user_id FROM absensi a
-                WHERE DATE(a.waktu_pulang) = CURDATE()
-                AND a.waktu_pulang IS NOT NULL
-            )
             AND u.id IN (
-                SELECT a.user_id FROM absensi a
-                WHERE DATE(a.waktu_masuk) = CURDATE()
+                SELECT u2.id FROM absensi a
+                JOIN karyawan k ON k.id = a.karyawan_id
+                JOIN user u2 ON u2.username = k.nama
+                WHERE a.tanggal = CURDATE()
+                AND a.jam_keluar IS NULL
             )
         """)
         users = cur.fetchall()
@@ -104,7 +103,7 @@ def pengingat_absen_pulang():
     print(f"✅ Pengingat pulang dikirim ke {len(users)} user")
 
 
-#  START SCHEDULER
+# ===================== START SCHEDULER =====================
 def start_scheduler():
     scheduler = BackgroundScheduler()
 
@@ -112,3 +111,4 @@ def start_scheduler():
     scheduler.add_job(pengingat_absen_pulang, "cron", hour=17, minute=0)
 
     scheduler.start()
+    print("✅ Scheduler notifikasi aktif")

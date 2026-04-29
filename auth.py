@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token
 from database import cek_login, tambah_karyawan, tambah_user, hapus_karyawan
 from recognizer import recog
+import time
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -60,7 +61,14 @@ def register_multi():
         print(f"EMAIL: {email} | JABATAN: {jabatan} | DEPT: {departemen}")
         print(f"JUMLAH FOTO: {len(fotos)}")
 
+        # ✅ Log ukuran tiap foto untuk memantau apakah sudah kecil
+        for i, f in enumerate(fotos):
+            print(f"  Foto {i+1}: {len(f)} chars (~{len(f) * 3 // 4 // 1024} KB)")
+
+        start = time.time()
         hasil = recog.daftar_wajah_multi(fotos, username)
+        print(f"Face encoding selesai dalam {time.time() - start:.2f} detik")
+
         print(f"HASIL ENCODING: {hasil}")
         if not hasil["sukses"]:
             return jsonify(hasil), 400
