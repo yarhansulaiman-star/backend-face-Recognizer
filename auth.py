@@ -1,13 +1,36 @@
+
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token
-from database import cek_login, tambah_karyawan, tambah_user, hapus_karyawan
-from recognizer import recog
+from database import cek_login, tambah_karyawan, tambah_user, hapus_karyawan, ambil_gaji
+from face_recognizer import recog
+
+import mysql.connector
+from config import DB_CONFIG
 import time
 
 auth_bp = Blueprint("auth", __name__)
 
 
-# ===================== LOGIN =====================
+def get_karyawan_id_by_username(username):
+    db = mysql.connector.connect(**DB_CONFIG)
+    cur = db.cursor(dictionary=True)
+    try:
+        cur.execute("""
+            SELECT k.id FROM karyawan k
+            JOIN user u ON k.nama = u.username
+            WHERE u.username = %s
+        """, (username,))
+        row = cur.fetchone()
+        print(f"get_karyawan_id_by_username({username}) → {row}")
+        return row["id"] if row else None
+    except Exception as e:
+        print(f"get_karyawan_id_by_username error: {e}")
+        return None
+    finally:
+        cur.close()
+        db.close()
+
+
 @auth_bp.route("/login", methods=["POST"])
 def login():
     data     = request.get_json(force=True)
@@ -22,16 +45,34 @@ def login():
         return jsonify({"sukses": False, "pesan": "Username atau password salah"}), 401
 
     token = create_access_token(identity=str(user["id"]))
+
+    karyawan_id = get_karyawan_id_by_username(username)
+    gaji_data   = ambil_gaji(karyawan_id) if karyawan_id else None
+
+    print(f"LOGIN → username={username}, user_id={user['id']}, karyawan_id={karyawan_id}")
+    print(f"LOGIN → gaji_data={gaji_data}")
+
+    gaji_pokok          = int(gaji_data["gaji_pokok"])          if gaji_data else 0
+    tunjangan_transport = int(gaji_data["tunjangan_transport"])  if gaji_data else 0
+    tunjangan_makan     = int(gaji_data["tunjangan_makan"])      if gaji_data else 0
+    tunjangan_jabatan   = int(gaji_data["tunjangan_jabatan"])    if gaji_data else 0
+
     return jsonify({
-        "sukses":   True,
-        "token":    token,
-        "username": user["username"],
-        "role":     user.get("role", "user"),
-        "user_id":  user["id"]
+        "sukses"              : True,
+        "token"               : token,
+        "username"            : user["username"],
+        "role"                : user.get("role", "user"),
+        "user_id"             : user["id"],
+        "karyawan_id"         : karyawan_id if karyawan_id else 0,
+        "gaji_pokok"          : gaji_pokok,
+        "tunjangan_transport" : tunjangan_transport,
+        "tunjangan_makan"     : tunjangan_makan,
+        "tunjangan_jabatan"   : tunjangan_jabatan,
+        "tarif_terlambat"     : 1000,
+        "tarif_alpha"         : 100000
     })
 
 
-# ===================== REGISTER =====================
 @auth_bp.route("/register/multi", methods=["POST"])
 def register_multi():
     try:
@@ -60,16 +101,14 @@ def register_multi():
         print(f"REGISTER → USERNAME: {username}")
         print(f"EMAIL: {email} | JABATAN: {jabatan} | DEPT: {departemen}")
         print(f"JUMLAH FOTO: {len(fotos)}")
-
-        # ✅ Log ukuran tiap foto untuk memantau apakah sudah kecil
         for i, f in enumerate(fotos):
             print(f"  Foto {i+1}: {len(f)} chars (~{len(f) * 3 // 4 // 1024} KB)")
 
         start = time.time()
         hasil = recog.daftar_wajah_multi(fotos, username)
         print(f"Face encoding selesai dalam {time.time() - start:.2f} detik")
-
         print(f"HASIL ENCODING: {hasil}")
+
         if not hasil["sukses"]:
             return jsonify(hasil), 400
 
@@ -88,11 +127,13 @@ def register_multi():
             recog.save()
             return jsonify({"sukses": False, "pesan": msg}), 400
 
-        print(f"REGISTRASI BERHASIL → {username}")
+        print(f"✅ REGISTRASI BERHASIL → {username}")
+        print(f"Semua encoding: {list(recog.encodings.keys())}")
         print(f"{'='*40}\n")
+
         return jsonify({
-            "sukses":          True,
-            "pesan":           "Registrasi berhasil",
+            "sukses"         : True,
+            "pesan"          : "Registrasi berhasil",
             "jumlah_encoding": hasil["jumlah_encoding"]
         })
 

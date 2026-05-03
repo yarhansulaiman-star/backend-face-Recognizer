@@ -14,21 +14,25 @@ from routes.izin import izin_bp
 from routes.notifikasi import notif_bp, start_scheduler
 from routes.laporan import laporan_bp
 
+
 # ===================== INIT APP =====================
 app = Flask(__name__)
 CORS(app)
+
 
 # ===================== FIREBASE =====================
 cred = credentials.Certificate("absenkantor-83eaa-58039e8f1892.json")
 firebase_admin.initialize_app(cred)
 
+
 # ===================== JWT =====================
-app.config["JWT_SECRET_KEY"] = SECRET_KEY
+app.config["JWT_SECRET_KEY"]           = SECRET_KEY
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(days=30)
 
 jwt = JWTManager(app)
 
-# ===================== ERROR HANDLER =====================
+
+# ===================== JWT ERROR HANDLERS =====================
 @jwt.invalid_token_loader
 def invalid_token_callback(reason):
     return jsonify({"sukses": False, "pesan": f"Token tidak valid: {reason}"}), 401
@@ -49,28 +53,23 @@ def handle_422(e):
 # ===================== HEALTH CHECK =====================
 @app.route("/health")
 def health():
-    from recognizer import recog
+    # ✅ Import dari face_recognizer
+    from face_recognizer import recog
     return jsonify({
-        "status"     : "ok",
-        "total_user" : len(recog.encodings)
+        "status"    : "ok",
+        "total_user": len(recog.encodings),
+        "users"     : list(recog.encodings.keys())
     })
 
 
 # ===================== HAPUS ENCODING =====================
 @app.route("/hapus/<username>", methods=["DELETE"])
 def hapus_encoding(username):
-    from recognizer import recog
-
-    if username not in recog.encodings:
-        return jsonify({"sukses": False, "pesan": "User tidak ditemukan"}), 404
-
-    del recog.encodings[username]
-    recog.save()
-
-    return jsonify({
-        "sukses": True,
-        "pesan" : f"{username} berhasil dihapus"
-    })
+    from face_recognizer import recog
+    hasil = recog.hapus_wajah(username)
+    if not hasil["sukses"]:
+        return jsonify(hasil), 404
+    return jsonify(hasil)
 
 
 # ===================== REGISTER ROUTES =====================
@@ -88,6 +87,5 @@ start_scheduler()
 
 # ===================== RUN =====================
 if __name__ == "__main__":
-    # ✅ debug=False — mencegah Flask restart 2x yang membuang ~15 detik
-    # saat debug=True Flask spawn 2 proses, ngrok sudah timeout sebelum encoding selesai
+    # debug=False — mencegah Flask restart 2x (double import = 2 instance recog)
     app.run(debug=False, host="0.0.0.0", port=5000)
