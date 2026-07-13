@@ -16,7 +16,7 @@ class FaceRecognizer:
         self.MARGIN_MIN      = 0.05   # selisih minimum antar kandidat
         self.MIN_MATCH_RATIO = 0.25   # minimal 25% encoding harus cocok
 
-        # ✅ Keyakinan minimum yang diterima server: 50%
+        # Keyakinan minimum yang diterima server: 50%
         # Score 0.50 → confidence = (1 - 0.50) * 100 = 50%
         self.MIN_CONFIDENCE  = 50.0
 
@@ -169,11 +169,10 @@ class FaceRecognizer:
                 print(f"  ❌ Ditolak — margin terlalu kecil ({margin:.4f})")
                 return {"sukses": False, "pesan": "Wajah tidak dapat dikenali dengan pasti"}
 
-        # ✅ FIX: konversi ke float Python biasa (bukan np.float64)
-        # np.float64 bisa menyebabkan masalah serialisasi JSON di beberapa versi
+      
         confidence = round(float((1 - best_score) * 100), 2)
 
-        # ✅ Cek keyakinan minimum 50%
+        #  Cek keyakinan minimum 50%
         if confidence < self.MIN_CONFIDENCE:
             print(f"  ❌ Ditolak — keyakinan {confidence}% < minimum {self.MIN_CONFIDENCE}%")
             return {"sukses": False, "pesan": f"Keyakinan terlalu rendah ({confidence}%)"}

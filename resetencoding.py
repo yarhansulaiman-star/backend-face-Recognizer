@@ -1,127 +1,145 @@
-"""
-reset_encoding.py
-─────────────────
-Script utilitas untuk mengelola file encodings.pkl tanpa perlu
-menjalankan server Flask.
+from flask import Blueprint, request, jsonify
+from flask_jwt_extended import create_access_token
+from database import cek_login, tambah_karyawan, tambah_user, hapus_karyawan, ambil_gaji
+from face_recognizer import recog
 
-Cara pakai:
-  python reset_encoding.py              → tampilkan info semua encoding
-  python reset_encoding.py --list       → sama seperti di atas
-  python reset_encoding.py --reset admin    → hapus encoding 'admin'
-  python reset_encoding.py --reset-all      → hapus SEMUA encoding
-  python reset_encoding.py --backup         → backup encodings.pkl
-  python reset_encoding.py --restore         → restore dari backup
-"""
+import mysql.connector
+from config import DB_CONFIG
+import time
 
-import pickle
-import os
-import sys
-import shutil
-from datetime import datetime
-
-ENCODING_FILE = "encodings.pkl"
-BACKUP_FILE   = f"encodings_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl"
+auth_bp = Blueprint("auth", __name__)
 
 
-def load():
-    if not os.path.exists(ENCODING_FILE):
-        print(f"[!] File '{ENCODING_FILE}' tidak ditemukan.")
-        return {}
-    with open(ENCODING_FILE, "rb") as f:
-        data = pickle.load(f)
-    # Normalisasi: pastikan semua value berupa list
-    return {k: (v if isinstance(v, list) else [v]) for k, v in data.items()}
+def get_karyawan_id_by_username(username):
+    db = mysql.connector.connect(**DB_CONFIG)
+    cur = db.cursor(dictionary=True)
+    try:
+      
+        cur.execute("""
+            SELECT k.id FROM karyawan k
+            JOIN user u ON k.nama = u.username
+            WHERE u.username = %s
+        """, (username,))
+        row = cur.fetchone()
+        print(f"get_karyawan_id_by_username({username}) → {row}")
+        return row["id"] if row else None
+    except Exception as e:
+        print(f"get_karyawan_id_by_username error: {e}")
+        return None
+    finally:
+        cur.close()
+        db.close()
 
 
-def save(data):
-    with open(ENCODING_FILE, "wb") as f:
-        pickle.dump(data, f)
-    print(f"[✓] Encoding disimpan ke '{ENCODING_FILE}'")
+@auth_bp.route("/login", methods=["POST"])
+def login():
+    data     = request.get_json(force=True)
+    username = data.get("username", "").strip()
+    password = data.get("password", "")
+
+    if not username or not password:
+        return jsonify({"sukses": False, "pesan": "Username dan password wajib diisi"}), 400
+
+    user = cek_login(username, password)
+    if not user:
+        return jsonify({"sukses": False, "pesan": "Username atau password salah"}), 401
+
+    token = create_access_token(identity=str(user["id"]))
+
+    karyawan_id = get_karyawan_id_by_username(username)
+    gaji_data   = ambil_gaji(karyawan_id) if karyawan_id else None
+
+    print(f"LOGIN → username={username}, user_id={user['id']}, karyawan_id={karyawan_id}")
+    print(f"LOGIN → gaji_data={gaji_data}")
+
+    gaji_pokok          = int(gaji_data["gaji_pokok"])          if gaji_data else 0
+    tunjangan_transport = int(gaji_data["tunjangan_transport"])  if gaji_data else 0
+    tunjangan_makan     = int(gaji_data["tunjangan_makan"])      if gaji_data else 0
+    tunjangan_jabatan   = int(gaji_data["tunjangan_jabatan"])    if gaji_data else 0
+
+    return jsonify({
+        "sukses"              : True,
+        "token"               : token,
+        "username"            : user["username"],
+        "role"                : user.get("role", "user"),
+        "user_id"             : user["id"],
+        "karyawan_id"         : karyawan_id if karyawan_id else 0,
+        "gaji_pokok"          : gaji_pokok,
+        "tunjangan_transport" : tunjangan_transport,
+        "tunjangan_makan"     : tunjangan_makan,
+        "tunjangan_jabatan"   : tunjangan_jabatan,
+        "tarif_terlambat"     : 1000,
+        "tarif_alpha"         : 100000
+    })
 
 
-def tampilkan_info(data):
-    if not data:
-        print("[ ] Tidak ada encoding terdaftar.")
-        return
-    print(f"\n{'─'*45}")
-    print(f"  {'NAMA':<25} {'ENCODING':>10}")
-    print(f"{'─'*45}")
-    total = 0
-    for nama, enc_list in sorted(data.items()):
-        print(f"  {nama:<25} {len(enc_list):>10}")
-        total += len(enc_list)
-    print(f"{'─'*45}")
-    print(f"  {'TOTAL USER':<25} {len(data):>10}")
-    print(f"  {'TOTAL ENCODING':<25} {total:>10}")
-    print(f"{'─'*45}\n")
+@auth_bp.route("/register/multi", methods=["POST"])
+def register_multi():
+    try:
+        data       = request.get_json(force=True)
+        username   = data.get("username",   "").strip()
+        password   = data.get("password",   "")
+        email      = data.get("email",      "").strip()
+        jabatan    = data.get("jabatan",    "").strip()
+        departemen = data.get("departemen", "IT").strip()
+        fotos      = data.get("fotos")
 
+        if not username:
+            return jsonify({"sukses": False, "pesan": "Username wajib diisi"}), 400
+        if not password:
+            return jsonify({"sukses": False, "pesan": "Password wajib diisi"}), 400
+        if not email:
+            return jsonify({"sukses": False, "pesan": "Email wajib diisi"}), 400
+        if not jabatan:
+            return jsonify({"sukses": False, "pesan": "Jabatan wajib diisi"}), 400
+        if not fotos or not isinstance(fotos, list):
+            return jsonify({"sukses": False, "pesan": "Foto tidak valid"}), 400
 
-def reset_satu(nama):
-    data = load()
-    if nama not in data:
-        print(f"[!] '{nama}' tidak ditemukan. User terdaftar: {list(data.keys())}")
-        return
-    del data[nama]
-    save(data)
-    print(f"[✓] Encoding '{nama}' berhasil dihapus.")
-    print(f"[i] Silakan register ulang '{nama}' melalui endpoint /register/multi")
+       
+        if len(fotos) < 1:
+            return jsonify({"sukses": False, "pesan": "Minimal 1 foto diperlukan"}), 400
 
+        print(f"\n{'='*40}")
+        print(f"REGISTER → USERNAME: {username}")
+        print(f"EMAIL: {email} | JABATAN: {jabatan} | DEPT: {departemen}")
+        print(f"JUMLAH FOTO: {len(fotos)}")
+        for i, f in enumerate(fotos):
+            print(f"  Foto {i+1}: {len(f)} chars (~{len(f) * 3 // 4 // 1024} KB)")
 
-def reset_semua():
-    konfirmasi = input("⚠️  Hapus SEMUA encoding? Ketik 'ya' untuk konfirmasi: ").strip()
-    if konfirmasi.lower() != "ya":
-        print("[i] Dibatalkan.")
-        return
-    save({})
-    print("[✓] Semua encoding dihapus.")
+        start = time.time()
+        hasil = recog.daftar_wajah_multi(fotos, username)
+        print(f"Face encoding selesai dalam {time.time() - start:.2f} detik")
+        print(f"HASIL ENCODING: {hasil}")
 
+        if not hasil["sukses"]:
+            return jsonify(hasil), 400
 
-def backup():
-    if not os.path.exists(ENCODING_FILE):
-        print(f"[!] '{ENCODING_FILE}' tidak ditemukan.")
-        return
-    shutil.copy(ENCODING_FILE, BACKUP_FILE)
-    print(f"[✓] Backup disimpan ke '{BACKUP_FILE}'")
+        ok, res = tambah_karyawan(username, email, jabatan, departemen)
+        print(f"DEBUG tambah_karyawan → ok={ok}, res={res}")
+        if not ok:
+            recog.encodings.pop(username, None)
+            recog.save()
+            return jsonify({"sukses": False, "pesan": res}), 400
 
+        ok_user, msg = tambah_user(username, password)
+        print(f"DEBUG tambah_user → ok={ok_user}, msg={msg}")
+        if not ok_user:
+            hapus_karyawan(username)
+            recog.encodings.pop(username, None)
+            recog.save()
+            return jsonify({"sukses": False, "pesan": msg}), 400
 
-def restore():
-    backups = sorted(
-        [f for f in os.listdir(".") if f.startswith("encodings_backup_")],
-        reverse=True
-    )
-    if not backups:
-        print("[!] Tidak ada file backup ditemukan.")
-        return
-    latest = backups[0]
-    print(f"[i] File backup terbaru: {latest}")
-    konfirmasi = input("Restore dari file ini? Ketik 'ya': ").strip()
-    if konfirmasi.lower() != "ya":
-        print("[i] Dibatalkan.")
-        return
-    shutil.copy(latest, ENCODING_FILE)
-    print(f"[✓] Encoding berhasil direstore dari '{latest}'")
+        print(f"✅ REGISTRASI BERHASIL → {username}")
+        print(f"Semua encoding: {list(recog.encodings.keys())}")
+        print(f"{'='*40}\n")
 
+        return jsonify({
+            "sukses"         : True,
+            "pesan"          : "Registrasi berhasil",
+            "jumlah_encoding": hasil["jumlah_encoding"]
+        })
 
-# ── Main ──────────────────────────────────────────────────────────────────────
-
-if __name__ == "__main__":
-    args = sys.argv[1:]
-
-    if not args or args[0] in ("--list", "-l"):
-        data = load()
-        tampilkan_info(data)
-
-    elif args[0] == "--reset" and len(args) >= 2:
-        reset_satu(args[1])
-
-    elif args[0] == "--reset-all":
-        reset_semua()
-
-    elif args[0] == "--backup":
-        backup()
-
-    elif args[0] == "--restore":
-        restore()
-
-    else:
-        print(__doc__)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"sukses": False, "pesan": str(e)}), 500

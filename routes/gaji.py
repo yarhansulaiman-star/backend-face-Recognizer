@@ -20,6 +20,7 @@ NAMA_BULAN_SHORT = ["","Jan","Feb","Mar","Apr","Mei","Jun",
 # =========================
 # LAPORAN ABSEN
 # =========================
+
 @gaji_bp.route("/laporan", methods=["GET"])
 @jwt_required()
 def laporan():
@@ -34,41 +35,9 @@ def laporan():
 
 
 # =========================
-# RIWAYAT ABSEN USER
-# =========================
-@gaji_bp.route("/riwayat", methods=["GET"])
-@jwt_required()
-def riwayat():
-    user_id = get_jwt_identity()
-
-    db = koneksi()
-    cur = db.cursor(dictionary=True)
-    try:
-        cur.execute("""
-            SELECT k.id, k.nama 
-            FROM user u
-            JOIN karyawan k ON k.id = u.karyawan_id
-            WHERE u.id = %s
-        """, (user_id,))
-        k = cur.fetchone()
-    finally:
-        cur.close()
-        db.close()
-
-    if not k:
-        return jsonify({"sukses": False, "pesan": "Data karyawan tidak ditemukan"}), 404
-
-    data = ambil_riwayat(k["id"])
-    return jsonify({
-        "sukses": True,
-        "nama": k["nama"],
-        "data": data
-    })
-
-
-# =========================
 #  LIST KARYAWAN (HRD)
 # =========================
+
 @gaji_bp.route("/karyawan/list", methods=["GET"])
 @jwt_required()
 def list_karyawan():
@@ -110,9 +79,9 @@ def gaji():
     cur = db.cursor(dictionary=True)
     try:
         cur.execute("""
-            SELECT u.role, u.karyawan_id, k.nama, k.jabatan, k.departemen
-            FROM user u 
-            LEFT JOIN karyawan k ON k.id = u.karyawan_id
+            SELECT u.role, k.id AS karyawan_id, k.nama, k.jabatan, k.departemen
+            FROM user u
+            LEFT JOIN karyawan k ON k.nama = u.username
             WHERE u.id = %s
         """, (user_id,))
         row = cur.fetchone()
@@ -148,21 +117,27 @@ def gaji():
     if not g:
         return jsonify({"sukses": False, "pesan": "Data gaji belum diatur"}), 404
 
+   
+    gaji_pokok          = int(g["gaji_pokok"])
+    tunjangan_transport = int(g["tunjangan_transport"])
+    tunjangan_makan     = int(g["tunjangan_makan"])
+    tunjangan_jabatan   = int(g["tunjangan_jabatan"])
+
     detail_terlambat, potongan_terlambat = hitung_potongan_terlambat(karyawan_id, bulan, tahun)
 
     jumlah_alpha   = hitung_alpha(karyawan_id, bulan, tahun)
     potongan_alpha = jumlah_alpha * 200000
 
     total_penghasilan = (
-        g["gaji_pokok"] +
-        g["tunjangan_transport"] +
-        g["tunjangan_makan"] +
-        g["tunjangan_jabatan"]
+        gaji_pokok +
+        tunjangan_transport +
+        tunjangan_makan +
+        tunjangan_jabatan
     )
 
-    bpjs_kesehatan = int(g["gaji_pokok"] * 0.01)
-    bpjs_tk        = int(g["gaji_pokok"] * 0.02)
-    pph21          = int(g["gaji_pokok"] * 0.05)
+    bpjs_kesehatan = int(gaji_pokok * 0.01)
+    bpjs_tk        = int(gaji_pokok * 0.02)
+    pph21          = int(gaji_pokok * 0.05)
 
     total_potongan = (
         potongan_terlambat +
@@ -181,10 +156,10 @@ def gaji():
             "jabatan": k["jabatan"],
             "periode": f"{NAMA_BULAN[bulan]} {tahun}",
 
-            "gaji_pokok": g["gaji_pokok"],
-            "tunjangan_transport": g["tunjangan_transport"],
-            "tunjangan_makan": g["tunjangan_makan"],
-            "tunjangan_jabatan": g["tunjangan_jabatan"],
+            "gaji_pokok": gaji_pokok,
+            "tunjangan_transport": tunjangan_transport,
+            "tunjangan_makan": tunjangan_makan,
+            "tunjangan_jabatan": tunjangan_jabatan,
             "uang_lembur": 0,
             "total_penghasilan": total_penghasilan,
 
@@ -248,13 +223,14 @@ def set_gaji():
 def riwayat_gaji():
     user_id = get_jwt_identity()
 
+   
     db = koneksi()
     cur = db.cursor(dictionary=True)
     try:
         cur.execute("""
-            SELECT k.id, k.nama 
+            SELECT k.id, k.nama
             FROM user u
-            JOIN karyawan k ON k.id = u.karyawan_id
+            JOIN karyawan k ON k.nama = u.username
             WHERE u.id = %s
         """, (user_id,))
         k = cur.fetchone()
@@ -267,18 +243,24 @@ def riwayat_gaji():
 
     hasil = []
     for g in ambil_riwayat_gaji(k["id"]):
+       
+        gaji_pokok          = int(g["gaji_pokok"])
+        tunjangan_transport = int(g["tunjangan_transport"])
+        tunjangan_makan     = int(g["tunjangan_makan"])
+        tunjangan_jabatan   = int(g["tunjangan_jabatan"])
+
         _, potongan = hitung_potongan_terlambat(k["id"], g["bulan"], g["tahun"])
 
         total = (
-            g["gaji_pokok"] +
-            g["tunjangan_transport"] +
-            g["tunjangan_makan"] +
-            g["tunjangan_jabatan"]
+            gaji_pokok +
+            tunjangan_transport +
+            tunjangan_makan +
+            tunjangan_jabatan
         )
 
         hasil.append({
             "periode": f"{NAMA_BULAN_SHORT[g['bulan']]} {g['tahun']}",
-            "gaji_pokok": g["gaji_pokok"],
+            "gaji_pokok": gaji_pokok,
             "potongan": potongan,
             "total_gaji": total - potongan
         })

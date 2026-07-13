@@ -1,15 +1,9 @@
-"""
-routes/absen.py
-===============
-Import recog dari face_recognizer — instance yang SAMA dengan auth.py
-"""
 
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
 
 from database import koneksi, simpan_absen, ambil_riwayat
 
-# ✅ Sama dengan auth.py — satu instance, satu encodings.pkl
 from face_recognizer import recog
 
 absen_bp = Blueprint("absen", __name__)
@@ -43,10 +37,7 @@ def absen():
     if not hasil["sukses"]:
         return jsonify(hasil), 200
 
-    # ── Cari karyawan di DB ───────────────────────────────────────────────
-    # hasil["nama"] = username yang disimpan saat register
-    # karyawan.nama = username yang disimpan oleh tambah_karyawan
-    # Keduanya harus sama persis
+    
     db  = koneksi()
     cur = db.cursor(dictionary=True)
     try:
@@ -118,6 +109,7 @@ def debug_score():
 
 
 # ===================== RIWAYAT =====================
+
 @absen_bp.route("/riwayat", methods=["GET"])
 def riwayat():
     try:
@@ -130,7 +122,7 @@ def riwayat():
     cur = db.cursor(dictionary=True)
     try:
         cur.execute("""
-            SELECT k.id FROM karyawan k
+            SELECT k.id, k.nama FROM karyawan k
             JOIN user u ON u.username = k.nama
             WHERE u.id = %s
         """, (user_id,))
@@ -143,4 +135,8 @@ def riwayat():
         return jsonify({"sukses": False, "pesan": "Karyawan tidak ditemukan"}), 404
 
     data = ambil_riwayat(karyawan["id"])
-    return jsonify({"sukses": True, "data": data})
+    return jsonify({
+        "sukses": True,
+        "nama"  : karyawan["nama"],
+        "data"  : data
+    })

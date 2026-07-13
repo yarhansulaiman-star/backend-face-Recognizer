@@ -1,4 +1,3 @@
-
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token
 from database import cek_login, tambah_karyawan, tambah_user, hapus_karyawan, ambil_gaji
@@ -94,8 +93,8 @@ def register_multi():
             return jsonify({"sukses": False, "pesan": "Jabatan wajib diisi"}), 400
         if not fotos or not isinstance(fotos, list):
             return jsonify({"sukses": False, "pesan": "Foto tidak valid"}), 400
-        if len(fotos) < 3:
-            return jsonify({"sukses": False, "pesan": "Minimal 3 foto diperlukan"}), 400
+        if len(fotos) < 1:
+            return jsonify({"sukses": False, "pesan": "Minimal 1 foto diperlukan"}), 400
 
         print(f"\n{'='*40}")
         print(f"REGISTER → USERNAME: {username}")
