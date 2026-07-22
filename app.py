@@ -12,8 +12,7 @@ from routes.absen import absen_bp
 from routes.gaji import gaji_bp
 from routes.izin import izin_bp
 from routes.notifikasi import notif_bp, start_scheduler
-
-
+from Reset_password_firebase import reset_bp
 
 # ===================== INIT APP =====================
 app = Flask(__name__)
@@ -78,6 +77,7 @@ app.register_blueprint(absen_bp)
 app.register_blueprint(gaji_bp)
 app.register_blueprint(izin_bp)
 app.register_blueprint(notif_bp)
+app.register_blueprint(reset_bp)
 
 
 # ===================== START SCHEDULER =====================

@@ -43,12 +43,20 @@ def login():
     if not user:
         return jsonify({"sukses": False, "pesan": "Username atau password salah"}), 401
 
-    token = create_access_token(identity=str(user["id"]))
+    role = user.get("role", "user")
+
+    # ✅ FIX: role dimasukkan ke additional_claims,
+    # supaya bisa dibaca lewat get_jwt() di endpoint yang butuh cek admin
+    # (contoh: /test-pengingat-semua di routes/notifikasi.py)
+    token = create_access_token(
+        identity=str(user["id"]),
+        additional_claims={"role": role}
+    )
 
     karyawan_id = get_karyawan_id_by_username(username)
     gaji_data   = ambil_gaji(karyawan_id) if karyawan_id else None
 
-    print(f"LOGIN → username={username}, user_id={user['id']}, karyawan_id={karyawan_id}")
+    print(f"LOGIN → username={username}, user_id={user['id']}, role={role}, karyawan_id={karyawan_id}")
     print(f"LOGIN → gaji_data={gaji_data}")
 
     gaji_pokok          = int(gaji_data["gaji_pokok"])          if gaji_data else 0
@@ -60,7 +68,7 @@ def login():
         "sukses"              : True,
         "token"               : token,
         "username"            : user["username"],
-        "role"                : user.get("role", "user"),
+        "role"                : role,
         "user_id"             : user["id"],
         "karyawan_id"         : karyawan_id if karyawan_id else 0,
         "gaji_pokok"          : gaji_pokok,
