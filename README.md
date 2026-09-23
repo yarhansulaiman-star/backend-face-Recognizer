@@ -91,14 +91,6 @@ python app.py
 
 ---
 
-## 🔒 Catatan Keamanan
-
-File berikut **tidak boleh** ikut ter-commit (sudah masuk `.gitignore`):
-
-- `.env` dan `config.py`
-- Service account Firebase (`absenkantor-*.json`)
-- `encodings.pkl` (data biometrik wajah)
-- Foto absensi karyawan (`foto_absen/`)
 
 ---
 
