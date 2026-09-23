@@ -1,0 +1,11 @@
+flask
+flask-cors
+flask-jwt-extended
+firebase-admin
+mysql-connector-python
+opencv-python
+deepface
+numpy
+apscheduler
+pytz
+requests
