@@ -89,7 +89,6 @@ python app.py
 | `DB_NAME` | Nama database |
 | `DB_CHARSET` | Charset koneksi database |
 
----
 
 
 ---
